@@ -7,7 +7,32 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell">
+    <section class="auth-shell" id="authShell">
+      <div class="auth-card">
+        <p class="kicker">やることカレンダー</p>
+        <h1>ログイン</h1>
+        <p class="auth-copy">自分の予定とTODOを、ログインしたユーザーごとに保存します。</p>
+
+        <form class="auth-form" id="authForm">
+          <label>
+            <span>メールアドレス</span>
+            <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
+          </label>
+          <label>
+            <span>パスワード</span>
+            <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required />
+          </label>
+          <div class="auth-actions">
+            <button class="primary-button" type="submit" data-auth-action="signin">ログイン</button>
+            <button class="secondary-button" type="submit" data-auth-action="signup">新しく登録</button>
+          </div>
+        </form>
+
+        <p class="auth-message" id="authMessage"></p>
+      </div>
+    </section>
+
+    <main class="app-shell is-hidden" id="appShell">
       <section class="calendar-pane" aria-label="カレンダー">
         <header class="topbar">
           <div>
@@ -18,6 +43,7 @@
             <button class="icon-button" id="prevMonth" type="button" aria-label="前の月" title="前の月">‹</button>
             <button class="today-button" id="todayButton" type="button">今日</button>
             <button class="icon-button" id="nextMonth" type="button" aria-label="次の月" title="次の月">›</button>
+            <button class="logout-button" id="logoutButton" type="button">ログアウト</button>
           </div>
         </header>
 
@@ -85,6 +111,8 @@
       </article>
     </template>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

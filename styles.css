@@ -55,6 +55,70 @@ select {
   padding: 20px;
 }
 
+.is-hidden {
+  display: none !important;
+}
+
+.auth-shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.auth-card {
+  width: min(100%, 430px);
+  border: 1px solid rgba(222, 216, 206, 0.9);
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.9);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+
+.auth-card h1 {
+  margin-bottom: 8px;
+  font-size: 2rem;
+}
+
+.auth-copy,
+.auth-message {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.secondary-button,
+.logout-button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 14px;
+  font-weight: 700;
+}
+
+.logout-button {
+  color: var(--muted);
+}
+
+.auth-message {
+  min-height: 1.7em;
+  margin: 14px 0 0;
+  font-weight: 700;
+}
+
 .calendar-pane,
 .task-pane {
   background: rgba(255, 253, 250, 0.84);
@@ -438,12 +502,19 @@ select {
     margin-bottom: 12px;
   }
 
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .month-controls {
     flex: 0 0 auto;
+    width: 100%;
   }
 
   .icon-button,
-  .today-button {
+  .today-button,
+  .logout-button {
     min-height: 44px;
   }
 
@@ -453,6 +524,12 @@ select {
   }
 
   .today-button {
+    flex: 1;
+    padding: 0 10px;
+  }
+
+  .logout-button {
+    flex: 1;
     padding: 0 10px;
   }
 
@@ -549,8 +626,22 @@ select {
   input,
   select,
   .primary-button,
+  .secondary-button,
   .filter {
     min-height: 48px;
+  }
+
+  .auth-shell {
+    padding: 8px;
+  }
+
+  .auth-card {
+    box-shadow: none;
+    padding: 16px;
+  }
+
+  .auth-actions {
+    grid-template-columns: 1fr;
   }
 
   .filter-bar {
@@ -593,6 +684,8 @@ select {
   .primary-button:hover,
   .icon-button:hover,
   .today-button:hover,
+  .secondary-button:hover,
+  .logout-button:hover,
   .filter:hover {
     transform: none;
   }

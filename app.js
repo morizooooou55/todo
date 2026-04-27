@@ -1,3 +1,9 @@
+const authShell = document.querySelector("#authShell");
+const appShell = document.querySelector("#appShell");
+const authForm = document.querySelector("#authForm");
+const authEmail = document.querySelector("#authEmail");
+const authPassword = document.querySelector("#authPassword");
+const authMessage = document.querySelector("#authMessage");
 const calendarGrid = document.querySelector("#calendarGrid");
 const monthLabel = document.querySelector("#monthLabel");
 const selectedDateLabel = document.querySelector("#selectedDateLabel");
@@ -10,8 +16,9 @@ const taskList = document.querySelector("#taskList");
 const taskPane = document.querySelector("#taskPane");
 const taskTemplate = document.querySelector("#taskTemplate");
 const filterButtons = [...document.querySelectorAll(".filter")];
+const logoutButton = document.querySelector("#logoutButton");
 
-const storageKey = "todo-calendar.tasks.v1";
+const config = window.SUPABASE_CONFIG ?? {};
 const dateFormatter = new Intl.DateTimeFormat("ja-JP", {
   year: "numeric",
   month: "long",
@@ -23,7 +30,9 @@ const monthFormatter = new Intl.DateTimeFormat("ja-JP", {
   month: "long",
 });
 
-let tasks = loadTasks();
+let supabaseClient;
+let currentUser = null;
+let tasks = [];
 let selectedDate = toDateKey(new Date());
 let visibleMonth = startOfMonth(new Date());
 let activeFilter = "all";
@@ -45,24 +54,66 @@ document.querySelector("#todayButton").addEventListener("click", () => {
   render();
 });
 
-taskForm.addEventListener("submit", (event) => {
+authForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const action = event.submitter?.dataset.authAction;
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+
+  setAuthMessage("処理しています...");
+
+  const result =
+    action === "signup"
+      ? await supabaseClient.auth.signUp({ email, password })
+      : await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (result.error) {
+    setAuthMessage(toJapaneseAuthError(result.error.message));
+    return;
+  }
+
+  if (action === "signup" && !result.data.session) {
+    setAuthMessage("登録メールを確認してください。確認後にログインできます。");
+    return;
+  }
+
+  setAuthMessage("");
+});
+
+logoutButton.addEventListener("click", async () => {
+  await supabaseClient.auth.signOut();
+});
+
+taskForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const title = taskTitle.value.trim();
 
-  if (!title) return;
+  if (!title || !currentUser) return;
 
-  tasks.unshift({
-    id: createId(),
-    title,
-    date: taskDate.value,
-    priority: taskPriority.value,
-    done: false,
-    createdAt: Date.now(),
-  });
+  setTaskFormEnabled(false);
+  const { data, error } = await supabaseClient
+    .from("tasks")
+    .insert({
+      user_id: currentUser.id,
+      title,
+      task_date: taskDate.value,
+      priority: taskPriority.value,
+      done: false,
+    })
+    .select()
+    .single();
 
+  setTaskFormEnabled(true);
+
+  if (error) {
+    showTaskMessage("タスクを追加できませんでした。Supabaseの設定を確認してください。");
+    return;
+  }
+
+  tasks.unshift(fromDatabaseTask(data));
   taskTitle.value = "";
   taskPriority.value = "normal";
-  saveTasks();
   render();
   taskTitle.focus();
 });
@@ -74,6 +125,57 @@ filterButtons.forEach((button) => {
     renderTaskList();
   });
 });
+
+init();
+
+async function init() {
+  if (!isConfigured()) {
+    setAuthMessage("SupabaseのURLとanon keyを supabase-config.js に入れてください。");
+    authForm.classList.add("is-hidden");
+    return;
+  }
+
+  supabaseClient = window.supabase.createClient(config.url, config.anonKey);
+  const { data } = await supabaseClient.auth.getSession();
+  await handleSession(data.session);
+
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    handleSession(session);
+  });
+}
+
+async function handleSession(session) {
+  currentUser = session?.user ?? null;
+
+  if (!currentUser) {
+    tasks = [];
+    authShell.classList.remove("is-hidden");
+    appShell.classList.add("is-hidden");
+    render();
+    return;
+  }
+
+  authShell.classList.add("is-hidden");
+  appShell.classList.remove("is-hidden");
+  await loadTasks();
+  render();
+}
+
+async function loadTasks() {
+  const { data, error } = await supabaseClient
+    .from("tasks")
+    .select("id,title,task_date,priority,done,created_at")
+    .eq("user_id", currentUser.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    tasks = [];
+    showTaskMessage("タスクを読み込めませんでした。SupabaseのSQL設定を確認してください。");
+    return;
+  }
+
+  tasks = data.map(fromDatabaseTask);
+}
 
 function render() {
   taskDate.value = selectedDate;
@@ -164,10 +266,7 @@ function renderTaskList() {
   taskList.replaceChildren();
 
   if (visibleTasks.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "この日のタスクはありません";
-    taskList.append(empty);
+    showTaskMessage("この日のタスクはありません");
     return;
   }
 
@@ -182,19 +281,53 @@ function renderTaskList() {
     title.textContent = task.title;
     meta.textContent = priorityLabel(task.priority);
 
-    checkButton.addEventListener("click", () => {
-      task.done = !task.done;
-      saveTasks();
-      render();
-    });
-
-    deleteButton.addEventListener("click", () => {
-      tasks = tasks.filter((item) => item.id !== task.id);
-      saveTasks();
-      render();
-    });
+    checkButton.addEventListener("click", () => toggleTask(task));
+    deleteButton.addEventListener("click", () => deleteTask(task));
 
     taskList.append(node);
+  });
+}
+
+async function toggleTask(task) {
+  const nextDone = !task.done;
+  const { error } = await supabaseClient
+    .from("tasks")
+    .update({ done: nextDone })
+    .eq("id", task.id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    showTaskMessage("タスクを更新できませんでした。");
+    return;
+  }
+
+  task.done = nextDone;
+  render();
+}
+
+async function deleteTask(task) {
+  const { error } = await supabaseClient.from("tasks").delete().eq("id", task.id).eq("user_id", currentUser.id);
+
+  if (error) {
+    showTaskMessage("タスクを削除できませんでした。");
+    return;
+  }
+
+  tasks = tasks.filter((item) => item.id !== task.id);
+  render();
+}
+
+function showTaskMessage(message) {
+  taskList.replaceChildren();
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+  empty.textContent = message;
+  taskList.append(empty);
+}
+
+function setTaskFormEnabled(enabled) {
+  [...taskForm.elements].forEach((element) => {
+    element.disabled = !enabled;
   });
 }
 
@@ -204,46 +337,36 @@ function scrollTasksIntoView() {
   }
 }
 
-function loadTasks() {
-  try {
-    return JSON.parse(localStorage.getItem(storageKey)) ?? seedTasks();
-  } catch {
-    return seedTasks();
-  }
+function fromDatabaseTask(task) {
+  return {
+    id: task.id,
+    title: task.title,
+    date: task.task_date,
+    priority: task.priority,
+    done: task.done,
+    createdAt: task.created_at,
+  };
 }
 
-function saveTasks() {
-  localStorage.setItem(storageKey, JSON.stringify(tasks));
+function isConfigured() {
+  return (
+    typeof window.supabase !== "undefined" &&
+    config.url &&
+    config.anonKey &&
+    !config.url.includes("YOUR_SUPABASE") &&
+    !config.anonKey.includes("YOUR_SUPABASE")
+  );
 }
 
-function seedTasks() {
-  const today = toDateKey(new Date());
-  return [
-    {
-      id: createId(),
-      title: "カレンダーから日付を選ぶ",
-      date: today,
-      priority: "normal",
-      done: false,
-      createdAt: Date.now(),
-    },
-    {
-      id: createId(),
-      title: "今日のタスクを追加する",
-      date: today,
-      priority: "high",
-      done: false,
-      createdAt: Date.now() + 1,
-    },
-  ];
+function setAuthMessage(message) {
+  authMessage.textContent = message;
 }
 
-function createId() {
-  if (globalThis.crypto?.randomUUID) {
-    return crypto.randomUUID();
-  }
-
-  return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function toJapaneseAuthError(message) {
+  if (message.includes("Invalid login credentials")) return "メールアドレスかパスワードが違います。";
+  if (message.includes("Password should be at least")) return "パスワードは6文字以上にしてください。";
+  if (message.includes("User already registered")) return "このメールアドレスはすでに登録されています。";
+  return `エラー: ${message}`;
 }
 
 function startOfMonth(date) {
@@ -269,5 +392,3 @@ function priorityRank(priority) {
 function priorityLabel(priority) {
   return { high: "優先度: 高", normal: "優先度: 通常", low: "優先度: 低" }[priority] ?? "優先度: 通常";
 }
-
-render();
